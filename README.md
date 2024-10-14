@@ -20,7 +20,7 @@ CasePear is a tool that allows you to clone websites and process image metadata.
 1. **Clone the repository:**
 
     ```sh
-    git clone https://github.com/yourusername/casepear.git
+    git clone https://github.com/kshuxx/casepear.git
     cd casepear
     ```
 
