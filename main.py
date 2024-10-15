@@ -5,7 +5,7 @@ from urllib.parse import urljoin, urlparse
 import gradio as gr
 from PIL import Image, UnidentifiedImageError
 from PIL.ExifTags import TAGS
-import piexif
+import shutil
 
 # Function to download and save a file
 def download_file(url, folder, headers):
@@ -21,9 +21,14 @@ def download_file(url, folder, headers):
         return f"Failed to download file: {e}"
 
 def clone_website(url):
+    base_dir = 'cloned_websites'
     try:
-        output_dir = 'cloned_website'
+        os.makedirs(base_dir, exist_ok=True)
+        
+        domain_name = urlparse(url).netloc
+        output_dir = os.path.join(base_dir, domain_name)
         os.makedirs(output_dir, exist_ok=True)
+        
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,/;q=0.8',
@@ -39,27 +44,34 @@ def clone_website(url):
             css_url = urljoin(url, css['href'])
             local_css_path = download_file(css_url, output_dir, headers)
             if local_css_path.startswith("Failed"):
-                return local_css_path
+                raise Exception(local_css_path)
             css['href'] = os.path.basename(local_css_path)
         for script in soup.find_all('script', src=True):
             js_url = urljoin(url, script['src'])
             local_js_path = download_file(js_url, output_dir, headers)
             if local_js_path.startswith("Failed"):
-                return local_js_path
+                raise Exception(local_js_path)
             script['src'] = os.path.basename(local_js_path)
         for img in soup.find_all('img', src=True):
             img_url = urljoin(url, img['src'])
             local_img_path = download_file(img_url, output_dir, headers)
             if local_img_path.startswith("Failed"):
-                return local_img_path
+                raise Exception(local_img_path)
             img['src'] = os.path.basename(local_img_path)
         with open(os.path.join(output_dir, 'index.html'), 'w', encoding='utf-8') as file:
             file.write(str(soup))
-        return f"Website has been cloned to '{output_dir}'"
+        
+        # Create a zip file of the cloned website
+        zip_filename = os.path.join(base_dir, f'{domain_name}.zip')
+        shutil.make_archive(os.path.join(base_dir, domain_name), 'zip', output_dir)
+        
+        return f"Website has been cloned to '{output_dir}'", zip_filename
     except requests.exceptions.RequestException as e:
-        return f"Failed to retrieve the webpage: {e}"
+        shutil.rmtree(output_dir, ignore_errors=True)
+        return f"Failed to retrieve the webpage: {e}", None
     except Exception as e:
-        return f"An unexpected error occurred: {str(e)}"
+        shutil.rmtree(output_dir, ignore_errors=True)
+        return f"An unexpected error occurred: {str(e)}", None
 
 def extract_metadata(image_path):
     try:
@@ -107,7 +119,7 @@ def process_image(image_path, clear_metadata_option):
 website_cloner_interface = gr.Interface(
     fn=clone_website,
     inputs=gr.Textbox(lines=1, placeholder="Enter URL here", label="Website URL"),
-    outputs=gr.Textbox(label="Cloning Result"),
+    outputs=[gr.Textbox(label="Cloning Result"), gr.File(label="Download Cloned Website")],
     title="Website Cloner",
     description="Enter the URL of the website you want to clone."
 )
