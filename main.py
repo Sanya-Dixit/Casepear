@@ -22,49 +22,49 @@ def download_file(url, folder, headers):
 
 def clone_website(url):
     base_dir = 'cloned_websites'
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,/;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+    }
+
     try:
         os.makedirs(base_dir, exist_ok=True)
-        
         domain_name = urlparse(url).netloc
         output_dir = os.path.join(base_dir, domain_name)
         os.makedirs(output_dir, exist_ok=True)
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,/;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-        }
+
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
-        for css in soup.find_all('link', rel='stylesheet'):
-            css_url = urljoin(url, css['href'])
-            local_css_path = download_file(css_url, output_dir, headers)
-            if local_css_path.startswith("Failed"):
-                raise Exception(local_css_path)
-            css['href'] = os.path.basename(local_css_path)
-        for script in soup.find_all('script', src=True):
-            js_url = urljoin(url, script['src'])
-            local_js_path = download_file(js_url, output_dir, headers)
-            if local_js_path.startswith("Failed"):
-                raise Exception(local_js_path)
-            script['src'] = os.path.basename(local_js_path)
-        for img in soup.find_all('img', src=True):
-            img_url = urljoin(url, img['src'])
-            local_img_path = download_file(img_url, output_dir, headers)
-            if local_img_path.startswith("Failed"):
-                raise Exception(local_img_path)
-            img['src'] = os.path.basename(local_img_path)
+
+        for tag in soup.find_all(['link', 'script', 'img']):
+            if tag.name == 'link' and tag.get('rel') == ['stylesheet']:
+                file_url = urljoin(url, tag['href'])
+                attr = 'href'
+            elif tag.name == 'script' and tag.get('src'):
+                file_url = urljoin(url, tag['src'])
+                attr = 'src'
+            elif tag.name == 'img' and tag.get('src'):
+                file_url = urljoin(url, tag['src'])
+                attr = 'src'
+            else:
+                continue
+
+            local_file_path = download_file(file_url, output_dir, headers)
+            if local_file_path.startswith("Failed"):
+                raise Exception(local_file_path)
+            tag[attr] = os.path.basename(local_file_path)
+
         with open(os.path.join(output_dir, 'index.html'), 'w', encoding='utf-8') as file:
             file.write(str(soup))
-        
-        # Create a zip file of the cloned website
+
         zip_filename = os.path.join(base_dir, f'{domain_name}.zip')
         shutil.make_archive(os.path.join(base_dir, domain_name), 'zip', output_dir)
-        
+
         return f"Website has been cloned to '{output_dir}'", zip_filename
     except requests.exceptions.RequestException as e:
         shutil.rmtree(output_dir, ignore_errors=True)
@@ -79,10 +79,7 @@ def extract_metadata(image_path):
         exif_data = img._getexif()
         if not exif_data:
             return "No EXIF metadata found.", None
-        metadata = {}
-        for tag_id, value in exif_data.items():
-            tag = TAGS.get(tag_id, tag_id)
-            metadata[tag] = value
+        metadata = {TAGS.get(tag_id, tag_id): value for tag_id, value in exif_data.items()}
         metadata_str = "\n".join(f"{tag}: {value}" for tag, value in metadata.items())
         return metadata_str, image_path
     except FileNotFoundError:
